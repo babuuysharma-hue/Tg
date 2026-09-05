@@ -11,7 +11,10 @@ from telegram import (
     InlineKeyboardButton, 
     InlineKeyboardMarkup, 
     ReplyKeyboardMarkup, 
-    KeyboardButton
+    KeyboardButton,
+    KeyboardButtonRequestUser,
+    KeyboardButtonRequestChat,
+    ChatAdministratorRights
 )
 from telegram.ext import (
     ApplicationBuilder, 
@@ -50,16 +53,39 @@ logging.basicConfig(
 client = TelegramClient(StringSession(STRING_SESSION), API_ID, API_HASH)
 app = None
 
+# Administrator rights for My Group / My Channel buttons
+admin_rights = ChatAdministratorRights(
+    is_anonymous=False,
+    can_manage_chat=True,
+    can_delete_messages=True,
+    can_restrict_members=True,
+    can_promote_members=True,
+    can_change_info=True,
+    can_invite_users=True
+)
+
 MAIN_REPLY_KEYBOARD = ReplyKeyboardMarkup([
-    [KeyboardButton("👤 User"), KeyboardButton("⭐ Premium"), KeyboardButton("👾 Bot")],
-    [KeyboardButton("👥 Group"), KeyboardButton("📢 Channel"), KeyboardButton("💬 Forum")],
-    [KeyboardButton("👥 My Group"), KeyboardButton("📢 My Channel"), KeyboardButton("💬 My Forum")]
+    [
+        KeyboardButton("👤 User", request_user=KeyboardButtonRequestUser(request_id=1)),
+        KeyboardButton("⭐ Premium", request_user=KeyboardButtonRequestUser(request_id=2, user_is_premium=True)),
+        KeyboardButton("👾 Bot", request_user=KeyboardButtonRequestUser(request_id=3, user_is_bot=True))
+    ],
+    [
+        KeyboardButton("👥 Group", request_chat=KeyboardButtonRequestChat(request_id=4, chat_is_channel=False)),
+        KeyboardButton("📢 Channel", request_chat=KeyboardButtonRequestChat(request_id=5, chat_is_channel=True)),
+        KeyboardButton("💬 Forum", request_chat=KeyboardButtonRequestChat(request_id=6, chat_is_forum=True))
+    ],
+    [
+        KeyboardButton("👥 My Group", request_chat=KeyboardButtonRequestChat(request_id=7, chat_is_channel=False, user_administrator_rights=admin_rights)),
+        KeyboardButton("📢 My Channel", request_chat=KeyboardButtonRequestChat(request_id=8, chat_is_channel=True, user_administrator_rights=admin_rights)),
+        KeyboardButton("💬 My Forum", request_chat=KeyboardButtonRequestChat(request_id=9, chat_is_forum=True, user_administrator_rights=admin_rights))
+    ]
 ], resize_keyboard=True)
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👋 <b>Welcome to Info Bot!</b>\n\n"
-        "Choose a category below or reply/forward any message to inspect.",
+        "Click any button below to choose a user/channel/group, or reply/forward any message to inspect.",
         parse_mode='HTML',
         reply_markup=MAIN_REPLY_KEYBOARD
     )
@@ -69,26 +95,13 @@ async def handle_incoming_content(update: Update, context: ContextTypes.DEFAULT_
     if not message:
         return
 
-    text_content = message.text or ""
-    
-    reply_buttons_list = [
-        "👤 User", "⭐ Premium", "👾 Bot", 
-        "👥 Group", "📢 Channel", "💬 Forum", 
-        "👥 My Group", "📢 My Channel", "💬 My Forum"
-    ]
-    
-    if text_content in reply_buttons_list:
-        await message.reply_text(
-            f"ℹ️ Mode selected: <b>{text_content}</b>\n\n"
-            "Please reply to a message or forward a message to fetch details.",
-            parse_mode='HTML',
-            reply_markup=MAIN_REPLY_KEYBOARD
-        )
-        return
-
     target = None
 
-    if message.reply_to_message:
+    if message.users_shared:
+        target = message.users_shared.user_ids
+    elif message.chats_shared:
+        target = message.chats_shared.chat_id
+    elif message.reply_to_message:
         replied = message.reply_to_message
         if replied.forward_from:
             target = replied.forward_from.id
@@ -98,12 +111,14 @@ async def handle_incoming_content(update: Update, context: ContextTypes.DEFAULT_
         target = message.forward_from.id
     elif message.contact:
         target = message.contact.user_id
-    else:
-        target = text_content.strip()
+    elif message.text:
+        text_content = message.text.strip()
+        if not text_content.startswith("/"):
+            target = text_content
 
     if not target:
         await message.reply_text(
-            "⚠️ Please reply to a user's message, forward a message, or send an ID/Username.",
+            "⚠️ Please use the buttons below, reply to a message, forward a message, or send an ID/Username.",
             reply_markup=MAIN_REPLY_KEYBOARD
         )
         return
@@ -165,7 +180,7 @@ async def handle_incoming_content(update: Update, context: ContextTypes.DEFAULT_
                 f"📛 <b>Title:</b> {title}\n"
                 f"🔗 <b>Username:</b> {username}\n"
             )
-            await message.reply_text(text_info, parse_mode='HTML', reply_markup=MAIN_REPLY_KEYBOARD)
+            await message.reply_text(text_info, parse_mode='HTML', reply_markup=reply_markup)
             
     except Exception as e:
         await message.reply_text(f"❌ Could not fetch info: {str(e)[:100]}", reply_markup=MAIN_REPLY_KEYBOARD)
@@ -190,7 +205,7 @@ async def main():
     
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start_command))
-    app.add_handler(MessageHandler(filters.TEXT | filters.FORWARDED | filters.CONTACT & ~filters.COMMAND, handle_incoming_content))
+    app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_incoming_content))
     app.add_handler(CallbackQueryHandler(handle_callback))
     
     async with app:
@@ -201,3 +216,4 @@ async def main():
 if __name__ == "__main__":
     Thread(target=run_flask).start()
     asyncio.run(main())
+
