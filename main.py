@@ -12,7 +12,7 @@ from telegram import (
     InlineKeyboardMarkup, 
     ReplyKeyboardMarkup, 
     KeyboardButton,
-    KeyboardButtonRequestUser,
+    KeyboardButtonRequestUsers,
     KeyboardButtonRequestChat,
     ChatAdministratorRights
 )
@@ -66,9 +66,9 @@ admin_rights = ChatAdministratorRights(
 
 MAIN_REPLY_KEYBOARD = ReplyKeyboardMarkup([
     [
-        KeyboardButton("👤 User", request_user=KeyboardButtonRequestUser(request_id=1)),
-        KeyboardButton("⭐ Premium", request_user=KeyboardButtonRequestUser(request_id=2, user_is_premium=True)),
-        KeyboardButton("👾 Bot", request_user=KeyboardButtonRequestUser(request_id=3, user_is_bot=True))
+        KeyboardButton("👤 User", request_users=KeyboardButtonRequestUsers(request_id=1)),
+        KeyboardButton("⭐ Premium", request_users=KeyboardButtonRequestUsers(request_id=2, user_is_premium=True)),
+        KeyboardButton("👾 Bot", request_users=KeyboardButtonRequestUsers(request_id=3, user_is_bot=True))
     ],
     [
         KeyboardButton("👥 Group", request_chat=KeyboardButtonRequestChat(request_id=4, chat_is_channel=False)),
@@ -98,7 +98,7 @@ async def handle_incoming_content(update: Update, context: ContextTypes.DEFAULT_
     target = None
 
     if message.users_shared:
-        target = message.users_shared.user_ids
+        target = message.users_shared.user_ids[0]
     elif message.chats_shared:
         target = message.chats_shared.chat_id
     elif message.reply_to_message:
@@ -215,5 +215,6 @@ async def main():
 
 if __name__ == "__main__":
     Thread(target=run_flask).start()
-    asyncio.run(main())
+    asyncio.main(main())
+
 
