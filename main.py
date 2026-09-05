@@ -13,8 +13,7 @@ from telegram import (
     ReplyKeyboardMarkup, 
     KeyboardButton,
     KeyboardButtonRequestUsers,
-    KeyboardButtonRequestChat,
-    ChatAdministratorRights
+    KeyboardButtonRequestChat
 )
 from telegram.ext import (
     ApplicationBuilder, 
@@ -53,17 +52,6 @@ logging.basicConfig(
 client = TelegramClient(StringSession(STRING_SESSION), API_ID, API_HASH)
 app = None
 
-# Administrator rights for My Group / My Channel buttons
-admin_rights = ChatAdministratorRights(
-    is_anonymous=False,
-    can_manage_chat=True,
-    can_delete_messages=True,
-    can_restrict_members=True,
-    can_promote_members=True,
-    can_change_info=True,
-    can_invite_users=True
-)
-
 MAIN_REPLY_KEYBOARD = ReplyKeyboardMarkup([
     [
         KeyboardButton("👤 User", request_users=KeyboardButtonRequestUsers(request_id=1)),
@@ -76,9 +64,9 @@ MAIN_REPLY_KEYBOARD = ReplyKeyboardMarkup([
         KeyboardButton("💬 Forum", request_chat=KeyboardButtonRequestChat(request_id=6, chat_is_forum=True))
     ],
     [
-        KeyboardButton("👥 My Group", request_chat=KeyboardButtonRequestChat(request_id=7, chat_is_channel=False, user_administrator_rights=admin_rights)),
-        KeyboardButton("📢 My Channel", request_chat=KeyboardButtonRequestChat(request_id=8, chat_is_channel=True, user_administrator_rights=admin_rights)),
-        KeyboardButton("💬 My Forum", request_chat=KeyboardButtonRequestChat(request_id=9, chat_is_forum=True, user_administrator_rights=admin_rights))
+        KeyboardButton("👥 My Group", request_chat=KeyboardButtonRequestChat(request_id=7, chat_is_channel=False)),
+        KeyboardButton("📢 My Channel", request_chat=KeyboardButtonRequestChat(request_id=8, chat_is_channel=True)),
+        KeyboardButton("💬 My Forum", request_chat=KeyboardButtonRequestChat(request_id=9, chat_is_forum=True))
     ]
 ], resize_keyboard=True)
 
@@ -215,6 +203,7 @@ async def main():
 
 if __name__ == "__main__":
     Thread(target=run_flask).start()
-    asyncio.main(main())
+    asyncio.run(main())
+
 
 
