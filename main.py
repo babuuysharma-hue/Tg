@@ -11,9 +11,7 @@ from telegram import (
     InlineKeyboardButton, 
     InlineKeyboardMarkup, 
     ReplyKeyboardMarkup, 
-    KeyboardButton,
-    KeyboardButtonRequestUsers,
-    KeyboardButtonRequestChat
+    KeyboardButton
 )
 from telegram.ext import (
     ApplicationBuilder, 
@@ -53,28 +51,14 @@ client = TelegramClient(StringSession(STRING_SESSION), API_ID, API_HASH)
 app = None
 
 MAIN_REPLY_KEYBOARD = ReplyKeyboardMarkup([
-    [
-        KeyboardButton("👤 User", request_users=KeyboardButtonRequestUsers(request_id=1)),
-        KeyboardButton("⭐ Premium", request_users=KeyboardButtonRequestUsers(request_id=2, user_is_premium=True)),
-        KeyboardButton("👾 Bot", request_users=KeyboardButtonRequestUsers(request_id=3, user_is_bot=True))
-    ],
-    [
-        KeyboardButton("👥 Group", request_chat=KeyboardButtonRequestChat(request_id=4, chat_is_channel=False)),
-        KeyboardButton("📢 Channel", request_chat=KeyboardButtonRequestChat(request_id=5, chat_is_channel=True)),
-        KeyboardButton("💬 Forum", request_chat=KeyboardButtonRequestChat(request_id=6, chat_is_forum=True))
-    ],
-    [
-        KeyboardButton("👥 My Group", request_chat=KeyboardButtonRequestChat(request_id=7, chat_is_channel=False)),
-        KeyboardButton("📢 My Channel", request_chat=KeyboardButtonRequestChat(request_id=8, chat_is_channel=True)),
-        KeyboardButton("💬 My Forum", request_chat=KeyboardButtonRequestChat(request_id=9, chat_is_forum=True))
-    ]
+    [KeyboardButton("⚡ Help & Instructions")]
 ], resize_keyboard=True)
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await update.message.reply_text(
             "👋 <b>Welcome to Info Bot!</b>\n\n"
-            "Click any button below to choose a user/channel/group, or reply/forward any message to inspect.",
+            "Send any User ID, Username, forward a message, or reply to any message to inspect its details.",
             parse_mode='HTML',
             reply_markup=MAIN_REPLY_KEYBOARD
         )
@@ -89,11 +73,7 @@ async def handle_incoming_content(update: Update, context: ContextTypes.DEFAULT_
 
         target = None
 
-        if message.users_shared:
-            target = message.users_shared.user_ids[0]
-        elif message.chats_shared:
-            target = message.chats_shared.chat_id
-        elif message.reply_to_message:
+        if message.reply_to_message:
             replied = message.reply_to_message
             if replied.forward_from:
                 target = replied.forward_from.id
@@ -105,12 +85,23 @@ async def handle_incoming_content(update: Update, context: ContextTypes.DEFAULT_
             target = message.contact.user_id
         elif message.text:
             text_content = message.text.strip()
+            if text_content == "⚡ Help & Instructions":
+                await message.reply_text(
+                    "ℹ️ <b>How to use this bot:</b>\n\n"
+                    "1. Send any Telegram User ID (e.g., <code>123456789</code>)\n"
+                    "2. Send a Username (e.g., <code>@username</code>)\n"
+                    "3. Forward any message from a user, group, or channel.\n"
+                    "4. Reply to any message to inspect the sender.",
+                    parse_mode='HTML',
+                    reply_markup=MAIN_REPLY_KEYBOARD
+                )
+                return
             if not text_content.startswith("/"):
                 target = text_content
 
         if not target:
             await message.reply_text(
-                "⚠️ Please use the buttons below, reply to a message, forward a message, or send an ID/Username.",
+                "⚠️ Please send a valid User ID, Username, forward a message, or reply to a message.",
                 reply_markup=MAIN_REPLY_KEYBOARD
             )
             return
@@ -225,6 +216,7 @@ async def main():
 if __name__ == "__main__":
     Thread(target=run_flask).start()
     asyncio.run(main())
+
 
 
 
