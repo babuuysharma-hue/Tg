@@ -71,47 +71,50 @@ MAIN_REPLY_KEYBOARD = ReplyKeyboardMarkup([
 ], resize_keyboard=True)
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "👋 <b>Welcome to Info Bot!</b>\n\n"
-        "Click any button below to choose a user/channel/group, or reply/forward any message to inspect.",
-        parse_mode='HTML',
-        reply_markup=MAIN_REPLY_KEYBOARD
-    )
-
-async def handle_incoming_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message = update.message
-    if not message:
-        return
-
-    target = None
-
-    if message.users_shared:
-        target = message.users_shared.user_ids[0]
-    elif message.chats_shared:
-        target = message.chats_shared.chat_id
-    elif message.reply_to_message:
-        replied = message.reply_to_message
-        if replied.forward_from:
-            target = replied.forward_from.id
-        elif replied.from_user:
-            target = replied.from_user.id
-    elif message.forward_from:
-        target = message.forward_from.id
-    elif message.contact:
-        target = message.contact.user_id
-    elif message.text:
-        text_content = message.text.strip()
-        if not text_content.startswith("/"):
-            target = text_content
-
-    if not target:
-        await message.reply_text(
-            "⚠️ Please use the buttons below, reply to a message, forward a message, or send an ID/Username.",
+    try:
+        await update.message.reply_text(
+            "👋 <b>Welcome to Info Bot!</b>\n\n"
+            "Click any button below to choose a user/channel/group, or reply/forward any message to inspect.",
+            parse_mode='HTML',
             reply_markup=MAIN_REPLY_KEYBOARD
         )
-        return
+    except Exception as e:
+        logging.error(f"Error in start_command: {e}")
 
+async def handle_incoming_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
+        message = update.message
+        if not message:
+            return
+
+        target = None
+
+        if message.users_shared:
+            target = message.users_shared.user_ids[0]
+        elif message.chats_shared:
+            target = message.chats_shared.chat_id
+        elif message.reply_to_message:
+            replied = message.reply_to_message
+            if replied.forward_from:
+                target = replied.forward_from.id
+            elif replied.from_user:
+                target = replied.from_user.id
+        elif message.forward_from:
+            target = message.forward_from.id
+        elif message.contact:
+            target = message.contact.user_id
+        elif message.text:
+            text_content = message.text.strip()
+            if not text_content.startswith("/"):
+                target = text_content
+
+        if not target:
+            await message.reply_text(
+                "⚠️ Please use the buttons below, reply to a message, forward a message, or send an ID/Username.",
+                reply_markup=MAIN_REPLY_KEYBOARD
+            )
+            return
+
         entity = await client.get_entity(target)
         
         if isinstance(entity, User):
@@ -168,24 +171,42 @@ async def handle_incoming_content(update: Update, context: ContextTypes.DEFAULT_
                 f"📛 <b>Title:</b> {title}\n"
                 f"🔗 <b>Username:</b> {username}\n"
             )
+
+            keyboard = [
+                [
+                    InlineKeyboardButton("📋 Copy ID", callback_data=f"copy_id_{chat_id}")
+                ]
+            ]
+            if getattr(entity, 'username', None):
+                keyboard[0].append(InlineKeyboardButton("🔗 Open Link", url=f"https://t.me/{entity.username}"))
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
             await message.reply_text(text_info, parse_mode='HTML', reply_markup=reply_markup)
             
     except Exception as e:
-        await message.reply_text(f"❌ Could not fetch info: {str(e)[:100]}", reply_markup=MAIN_REPLY_KEYBOARD)
+        logging.error(f"Error handling incoming content: {e}")
+        try:
+            if update.message:
+                await update.message.reply_text(f"❌ Could not fetch info: {str(e)[:100]}", reply_markup=MAIN_REPLY_KEYBOARD)
+        except Exception:
+            pass
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    data = query.data
-    
-    if data.startswith("copy_id_"):
-        uid = data.split("_")[2]
-        await query.answer(f"ID Copied: {uid}", show_alert=True)
-    elif data.startswith("copy_phone_"):
-        await query.answer("Phone number copied or hidden.", show_alert=True)
-    elif data.startswith("share_"):
-        await query.answer("Card share feature triggered.", show_alert=True)
-    else:
-        await query.answer()
+    try:
+        query = update.callback_query
+        data = query.data
+        
+        if data.startswith("copy_id_"):
+            uid = data.split("_")[2]
+            await query.answer(f"ID Copied: {uid}", show_alert=True)
+        elif data.startswith("copy_phone_"):
+            await query.answer("Phone number copied or hidden.", show_alert=True)
+        elif data.startswith("share_"):
+            await query.answer("Card share feature triggered.", show_alert=True)
+        else:
+            await query.answer()
+    except Exception as e:
+        logging.error(f"Error in handle_callback: {e}")
 
 async def main():
     global app
@@ -204,6 +225,7 @@ async def main():
 if __name__ == "__main__":
     Thread(target=run_flask).start()
     asyncio.run(main())
+
 
 
 
