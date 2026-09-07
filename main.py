@@ -5,11 +5,8 @@ from threading import Thread
 from flask import Flask
 from telethon import TelegramClient
 from telethon.sessions import StringSession
-from telethon.tl.types import User, Channel, Chat
 from telegram import (
     Update, 
-    InlineKeyboardButton, 
-    InlineKeyboardMarkup, 
     ReplyKeyboardMarkup, 
     KeyboardButton,
     KeyboardButtonRequestUsers,
@@ -20,7 +17,6 @@ from telegram.ext import (
     ContextTypes, 
     CommandHandler, 
     MessageHandler, 
-    CallbackQueryHandler, 
     filters
 )
 
@@ -43,6 +39,9 @@ BOT_TOKEN = "8947053031:AAEE42KqJFLQKX1NPFps5QqZM1uGWh06898"
 API_ID = 10079905
 API_HASH = "e4a5fa251e2e055f26e5c2add8401530"
 STRING_SESSION = "1BVtsOIwBu5M1JD_6qhpYIDzzEWfAswiucDVlxbxINPBlR6WOnqCUkSv6K99W2yXeGK-NAGLklagM43oUgOeJj4h0Fkky659-x0Q8k8FJgB2ZXa8o4D_IENbulHdPshh40WRp9q_XuawdwJ0dkEzwL7ibm0h0GSzSo2jq1Nqr95O4VLQENaFuglJ5gFK6l4DBOTHMyDEhr70iNJDi3S-FyzeICmQiytFUE7YwHVaALDXEkrPEPoDc861DdpaxCyYFJ7u30QXp88AIllTohT6khw1dk1cbr2nBulFbQc1iP4_SsFH27i0IqDh4r1tcgT1k_s4j986ns2-r9e12jYd4YUmf7gnxJgg="
+
+# Target bot username updated to @ExposeInfo_Bot
+TARGET_BOT_USERNAME = "@ExposeInfo_Bot"
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -70,7 +69,7 @@ MAIN_REPLY_KEYBOARD = ReplyKeyboardMarkup([
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👋 <b>Welcome to Info Bot!</b>\n\n"
-        "Click <b>👤 My Profile</b> to view your own details, use buttons to inspect others, or reply/forward any message.",
+        "Click <b>👤 My Profile</b> or use buttons to inspect users through the target bot.",
         parse_mode='HTML',
         reply_markup=MAIN_REPLY_KEYBOARD
     )
@@ -105,86 +104,28 @@ async def handle_incoming_content(update: Update, context: ContextTypes.DEFAULT_
 
     if not target:
         await message.reply_text(
-            "⚠️ Please use the buttons below, reply to a message, or send an ID/Username.",
+            "⚠️ Please use the buttons below or send an ID/Username.",
             reply_markup=MAIN_REPLY_KEYBOARD
         )
         return
 
     try:
-        entity = await client.get_entity(target)
+        # Send the target ID/username to the target bot using userbot session
+        await client.send_message(TARGET_BOT_USERNAME, str(target))
         
-        if isinstance(entity, User):
-            user_id = entity.id
-            first_name = entity.first_name or ""
-            last_name = entity.last_name or ""
-            name = f"{first_name} {last_name}".strip() or "Unknown"
-            username = f"@{entity.username}" if entity.username else "--"
-            phone = f"+{entity.phone}" if hasattr(entity, 'phone') and entity.phone else "Hidden / Not Shared"
-            
-            if entity.bot:
-                entity_type = "Bot"
-            elif entity.premium:
-                entity_type = "Premium User"
-            else:
-                entity_type = "User"
-
-            text_info = (
-                f"🔶 <b>User Info</b>\n\n"
-                f"👤 <b>Type:</b> {entity_type}\n"
-                f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
-                f"📛 <b>Name:</b> {name}\n"
-                f"🔗 <b>Username:</b> {username}\n"
-                f"📱 <b>Phone:</b> {phone}\n"
-                f"📅 <b>Account Age:</b> ~2024+\n"
-                f"🛡️ <b>CAS Ban:</b> Clean ✅"
-            )
-
-            keyboard = [
-                [
-                    InlineKeyboardButton("📋 Copy ID", callback_data=f"copy_id_{user_id}"),
-                    InlineKeyboardButton("🚀 Share Card", callback_data=f"share_{user_id}")
-                ],
-                [
-                    InlineKeyboardButton("📱 Copy Phone", callback_data=f"copy_phone_{user_id}")
-                ],
-                [
-                    InlineKeyboardButton("🔗 Open Profile", url=f"tg://user?id={user_id}")
-                ]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-
-            await message.reply_text(text_info, parse_mode='HTML', reply_markup=reply_markup)
-            
-        elif isinstance(entity, (Channel, Chat)):
-            chat_id = entity.id
-            title = getattr(entity, 'title', 'Unknown')
-            username = f"@{entity.username}" if getattr(entity, 'username', None) else "--"
-            chat_type = "Channel" if isinstance(entity, Channel) and entity.broadcast else "Group"
-
-            text_info = (
-                f"🔶 <b>{chat_type} Info</b>\n\n"
-                f"🆔 <b>ID:</b> <code>{chat_id}</code>\n"
-                f"📛 <b>Title:</b> {title}\n"
-                f"🔗 <b>Username:</b> {username}\n"
-            )
-            await message.reply_text(text_info, parse_mode='HTML', reply_markup=reply_markup)
+        # Wait a moment for the target bot to respond
+        await asyncio.sleep(2.5)
+        
+        # Fetch the latest response message from the target bot
+        async for msg in client.iter_messages(TARGET_BOT_USERNAME, limit=1):
+            if msg and msg.text:
+                await message.reply_text(msg.text, reply_markup=MAIN_REPLY_KEYBOARD)
+                return
+                
+        await message.reply_text("⚠️ Target bot did not reply in time.", reply_markup=MAIN_REPLY_KEYBOARD)
             
     except Exception as e:
-        await message.reply_text(f"❌ Could not fetch info: {str(e)[:100]}", reply_markup=MAIN_REPLY_KEYBOARD)
-
-async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    data = query.data
-    
-    if data.startswith("copy_id_"):
-        uid = data.split("_")[2]
-        await query.answer(f"ID Copied: {uid}", show_alert=True)
-    elif data.startswith("copy_phone_"):
-        await query.answer("Phone number copied or hidden.", show_alert=True)
-    elif data.startswith("share_"):
-        await query.answer("Card share feature triggered.", show_alert=True)
-    else:
-        await query.answer()
+        await message.reply_text(f"❌ Error: {str(e)[:100]}", reply_markup=MAIN_REPLY_KEYBOARD)
 
 async def main():
     global app
@@ -193,7 +134,6 @@ async def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_incoming_content))
-    app.add_handler(CallbackQueryHandler(handle_callback))
     
     async with app:
         await app.start()
@@ -203,6 +143,7 @@ async def main():
 if __name__ == "__main__":
     Thread(target=run_flask).start()
     asyncio.run(main())
+
 
 
 
