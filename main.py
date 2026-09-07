@@ -5,7 +5,7 @@ from threading import Thread
 from flask import Flask
 from telethon import TelegramClient
 from telethon.sessions import StringSession
-from telegram import Update
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, KeyboardButtonRequestUser, KeyboardButtonRequestChat
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
 
 # Flask server for Render keep-alive
@@ -40,12 +40,26 @@ userbot = TelegramClient(StringSession(STRING_SESSION), API_ID, API_HASH)
 bot_app = None
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Creating interactive request buttons so Telegram sends proper user/chat ID data
+    keyboard = [
+        [
+            KeyboardButton("👤 Select User", request_user=KeyboardButtonRequestUser(request_id=1, user_is_bot=False)),
+            KeyboardButton("🤖 Select Bot", request_user=KeyboardButtonRequestUser(request_id=2, user_is_bot=True))
+        ],
+        [
+            KeyboardButton("📢 Select Channel", request_chat=KeyboardButtonRequestChat(request_id=3, chat_is_channel=True)),
+            KeyboardButton("👥 Select Group", request_chat=KeyboardButtonRequestChat(request_id=4, chat_is_channel=False))
+        ]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    
     await update.message.reply_text(
         "👋 <b>Welcome to Info Bot!</b>\n\n"
         "📌 <b>How to use:</b>\n"
-        "1️⃣ Share any profile using the buttons below\n\n"
-        "⚡ Session account will send <code>/tg &lt;user_id&gt;</code> to the target bot!",
-        parse_mode='HTML'
+        "1️⃣ Tap any button below to share a profile safely.\n"
+        "⚡ Session account will instantly fetch info from the target bot!",
+        parse_mode='HTML',
+        reply_markup=reply_markup
     )
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -57,39 +71,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_uid = None
     user_name = "User"
     
-    # 1. Check if profile shared via Telegram Native Request Buttons (user_shared)
+    # 1. Capture user ID from interactive request buttons
     if message.user_shared:
         target_uid = message.user_shared.user_id
         user_name = f"User_{target_uid}"
         logger.info(f"✅ Captured via user_shared: {target_uid}")
         
-    # 2. Check if group/channel shared via Native Request Buttons (chat_shared)
+    # 2. Capture chat/channel ID from interactive request buttons
     elif message.chat_shared:
         target_uid = message.chat_shared.chat_id
         user_name = f"Chat_{target_uid}"
         logger.info(f"✅ Captured via chat_shared: {target_uid}")
         
-    # 3. Check message entities (mention / text_link)
-    elif message.entities:
-        for entity in message.entities:
-            if entity.type == "text_mention":
-                target_uid = entity.user.id
-                user_name = entity.user.first_name
-                break
-            elif entity.type == "text_link" and "user?id=" in entity.url:
-                try:
-                    target_uid = int(entity.url.split("id=")[1])
-                except:
-                    pass
-                user_name = message.text[entity.offset:entity.offset+entity.length] if message.text else "User"
-                break
-                
-    # 4. Check if a contact card is shared directly
-    elif message.contact and message.contact.user_id:
-        target_uid = message.contact.user_id
-        user_name = message.contact.first_name
-            
-    # 5. Fallback for plain user ID or text input
+    # 3. Fallback for text input / user ID
     elif message.text and not message.text.startswith("/"):
         text = message.text.strip()
         if text.isdigit():
@@ -97,14 +91,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_name = text
 
     if not target_uid:
-        await message.reply_text("⚠️ Please share a valid profile using the buttons.")
+        await message.reply_text("⚠️ Please select a profile using the keyboard buttons below.")
         return
         
     logger.info(f"Extracted Target ID: {target_uid}, Name: {user_name}")
     await message.reply_text("⏳ Processing command through session account...")
     
     try:
-        # Format as /tg <user_id> and send to the target bot
+        # Format as /tg <user_id> and send to the target bot via session
         command_text = f"/tg {target_uid}"
         await userbot.send_message(TARGET_BOT_USERNAME, command_text)
         logger.info(f"Sent command {command_text} to target bot")
@@ -121,7 +115,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 return
         
-        await message.reply_text("⚠️ No response from target bot.")
+        await message.reply_text("⚠️ No response from target bot. Make sure session account has started @ExposeInfo_Bot once.")
         
     except Exception as e:
         logger.error(f"Error: {e}", exc_info=True)
@@ -154,6 +148,7 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
 
 
