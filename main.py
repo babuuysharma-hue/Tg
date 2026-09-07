@@ -168,17 +168,6 @@ async def main():
         await asyncio.sleep(3600)
 
 if __name__ == "__main__":
-    asyncio.run(main())()
-    await bot_app.start()
-    await bot_app.updater.start_polling(drop_pending_updates=True)
-    
-    logger.info("✅ Bot is running! Waiting for messages...")
-    
-    # Keep running
-    while True:
-        await asyncio.sleep(3600)
-
-if __name__ == "__main__":
     asyncio.run(main())
 
 
