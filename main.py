@@ -5,7 +5,6 @@ from threading import Thread
 from flask import Flask
 from telethon import TelegramClient
 from telethon.sessions import StringSession
-from telethon.tl.types import InputMediaContact
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
 
@@ -45,13 +44,12 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "👋 <b>Welcome to Info Bot!</b>\n\n"
         "📌 <b>How to use:</b>\n"
         "1️⃣ Share any profile using the buttons below\n\n"
-        "⚡ Session account will process and fetch info!",
+        "⚡ Session account will send <code>/tg &lt;user_id&gt;</code> to the target bot!",
         parse_mode='HTML'
     )
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
-    user_id = update.effective_user.id
     
     if not message:
         return
@@ -103,24 +101,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
         
     logger.info(f"Extracted Target ID: {target_uid}, Name: {user_name}")
-    await message.reply_text("⏳ Processing contact through session account...")
+    await message.reply_text("⏳ Processing command through session account...")
     
     try:
-        # Send native Telegram Contact card via userbot session to target bot
-        contact = InputMediaContact(
-            phone_number="",
-            first_name=user_name,
-            last_name="",
-            user_id=target_uid
-        )
-        await userbot.send_file(TARGET_BOT_USERNAME, contact)
-        logger.info(f"Sent contact card for user ID {target_uid} to target bot")
+        # Format as /tg <user_id> and send to the target bot
+        command_text = f"/tg {target_uid}"
+        await userbot.send_message(TARGET_BOT_USERNAME, command_text)
+        logger.info(f"Sent command {command_text} to target bot")
         
         # Wait for target bot response
         await asyncio.sleep(5)
         
         async for response in userbot.iter_messages(TARGET_BOT_USERNAME, limit=1):
-            if response and response.text:
+            if response and response.text and response.text != command_text:
                 logger.info(f"Got response: {response.text[:100]}...")
                 await message.reply_text(
                     f"📊 <b>User Info for {user_name}:</b>\n\n{response.text}",
@@ -161,6 +154,7 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
 
 
