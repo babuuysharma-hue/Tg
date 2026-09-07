@@ -80,57 +80,52 @@ async def handle_incoming_content(update: Update, context: ContextTypes.DEFAULT_
     if not message:
         return
 
-    target = None
+    target_payload = None
 
+    # Check what user sent or shared
     if message.text == "👤 My Profile":
-        target = message.from_user.id
+        target_payload = f"tg://user?id={message.from_user.id}"
     elif message.users_shared:
-        target = message.users_shared.user_ids[0]
+        user_id = message.users_shared.user_ids[0]
+        target_payload = f"tg://user?id={user_id}"
     elif message.chats_shared:
-        target = message.chats_shared.chat_id
+        chat_id = message.chats_shared.chat_id
+        target_payload = str(chat_id)
     elif message.reply_to_message:
         replied = message.reply_to_message
         if replied.forward_from:
-            target = replied.forward_from.id
+            target_payload = f"tg://user?id={replied.forward_from.id}"
         elif replied.from_user:
-            target = replied.from_user.id
+            target_payload = f"tg://user?id={replied.from_user.id}"
+        elif replied.text:
+            target_payload = replied.text.strip()
     elif message.forward_from:
-        target = message.forward_from.id
+        target_payload = f"tg://user?id={message.forward_from.id}"
     elif message.contact:
-        target = message.contact.user_id
+        target_payload = f"tg://user?id={message.contact.user_id}"
     elif message.text:
         text_content = message.text.strip()
         if not text_content.startswith("/"):
-            target = text_content
+            if text_content.isdigit():
+                target_payload = f"tg://user?id={text_content}"
+            else:
+                target_payload = text_content
 
-    if not target:
+    if not target_payload:
         await message.reply_text(
-            "⚠️ Please use the buttons below or send an ID/Username.",
+            "⚠️ Please use the buttons below or send an ID/Username/Link.",
             reply_markup=MAIN_REPLY_KEYBOARD
         )
         return
 
     try:
-        # Send proper link format to target bot so it gets processed successfully
-        if str(target).isdigit():
-            payload = f"tg://user?id={target}"
-            await client.send_message(TARGET_BOT_USERNAME, payload)
-        else:
-            entity = await client.get_entity(target)
-            if isinstance(entity, User) and entity.username:
-                payload = f"https://t.me/{entity.username}"
-                await client.send_message(TARGET_BOT_USERNAME, payload)
-            elif isinstance(entity, User):
-                payload = f"tg://user?id={entity.id}"
-                await client.send_message(TARGET_BOT_USERNAME, payload)
-            else:
-                payload = f"https://t.me/{entity.username}" if hasattr(entity, 'username') and entity.username else str(entity.id)
-                await client.send_message(TARGET_BOT_USERNAME, payload)
+        # Send the exact link/payload format directly to the target bot via Userbot session
+        await client.send_message(TARGET_BOT_USERNAME, target_payload)
         
         # Wait for target bot to reply
         await asyncio.sleep(2.5)
         
-        # Fetch the latest response from target bot and send back to user
+        # Fetch the latest response from target bot and send back to the user in official bot
         async for msg in client.iter_messages(TARGET_BOT_USERNAME, limit=1):
             if msg and msg.text:
                 await message.reply_text(msg.text, reply_markup=MAIN_REPLY_KEYBOARD)
@@ -159,6 +154,7 @@ async def main():
 if __name__ == "__main__":
     Thread(target=run_flask).start()
     asyncio.run(main())
+
 
 
 
