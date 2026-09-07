@@ -5,6 +5,8 @@ from threading import Thread
 from flask import Flask
 from telethon import TelegramClient
 from telethon.sessions import StringSession
+from telethon.tl import types
+from telethon.tl.types import User
 from telegram import (
     Update, 
     ReplyKeyboardMarkup, 
@@ -109,27 +111,37 @@ async def handle_incoming_content(update: Update, context: ContextTypes.DEFAULT_
         return
 
     try:
-        # Fetch entity to get correct username or ID
         entity = await client.get_entity(target)
         
-        # Prepare the exact text payload that target bot accepts
-        if hasattr(entity, 'username') and entity.username:
-            payload = f"@{entity.username}"
+        # If it's a user, send a contact card which target bots accept successfully
+        if isinstance(entity, User):
+            phone = getattr(entity, 'phone', None) or '9999999999'
+            first_name = entity.first_name or 'User'
+            last_name = entity.last_name or ''
+            
+            await client.send_file(
+                TARGET_BOT_USERNAME,
+                types.InputMediaContact(
+                    phone_number=phone,
+                    first_name=first_name,
+                    last_name=last_name,
+                    user_id=entity.id
+                )
+            )
         else:
-            payload = str(entity.id)
+            # For groups/channels, send username or invite link
+            payload = f"@{entity.username}" if hasattr(entity, 'username') and entity.username else str(entity.id)
+            await client.send_message(TARGET_BOT_USERNAME, payload)
         
-        # Send message to the target bot using userbot
-        await client.send_message(TARGET_BOT_USERNAME, payload)
-        
-        # Wait for the target bot to process
+        # Wait for target bot to reply
         await asyncio.sleep(2.5)
         
-        # Fetch the latest response from the target bot
+        # Fetch the latest response from target bot
         async for msg in client.iter_messages(TARGET_BOT_USERNAME, limit=1):
-            if msg and msg.text and msg.text != payload:
+            if msg and msg.text:
                 await message.reply_text(msg.text, reply_markup=MAIN_REPLY_KEYBOARD)
                 return
-                
+
         await message.reply_text("⚠️ Target bot did not reply in time.", reply_markup=MAIN_REPLY_KEYBOARD)
             
     except Exception as e:
@@ -143,14 +155,18 @@ async def main():
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_incoming_content))
     
-    async with app:
-        await app.start()
-        await app.updater.start_polling(drop_pending_updates=True)
-        await client.run_until_disconnected()
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling(drop_pending_updates=True)
+    
+    # Keep event loop running for both Telethon and PTB
+    while True:
+        await asyncio.sleep(3600)
 
 if __name__ == "__main__":
     Thread(target=run_flask).start()
     asyncio.run(main())
+
 
 
 
