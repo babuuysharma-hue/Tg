@@ -44,8 +44,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👋 <b>Welcome to Info Bot!</b>\n\n"
         "📌 <b>How to use:</b>\n"
-        "1️⃣ Share any profile mention to this bot\n\n"
-        "⚡ Session account will send the contact card to the target bot!",
+        "1️⃣ Share any profile using the buttons below\n\n"
+        "⚡ Session account will process and fetch info!",
         parse_mode='HTML'
     )
 
@@ -59,8 +59,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_uid = None
     user_name = "User"
     
-    # Extract user ID and name from message entities (mention)
-    if message.entities:
+    # 1. Check if profile shared via Telegram Native Request Buttons (user_shared)
+    if message.user_shared:
+        target_uid = message.user_shared.user_id
+        user_name = f"User_{target_uid}"
+        logger.info(f"✅ Captured via user_shared: {target_uid}")
+        
+    # 2. Check if group/channel shared via Native Request Buttons (chat_shared)
+    elif message.chat_shared:
+        target_uid = message.chat_shared.chat_id
+        user_name = f"Chat_{target_uid}"
+        logger.info(f"✅ Captured via chat_shared: {target_uid}")
+        
+    # 3. Check message entities (mention / text_link)
+    elif message.entities:
         for entity in message.entities:
             if entity.type == "text_mention":
                 target_uid = entity.user.id
@@ -74,28 +86,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 user_name = message.text[entity.offset:entity.offset+entity.length] if message.text else "User"
                 break
                 
-    # Check if a contact card is shared directly
-    if not target_uid and message.contact:
-        if message.contact.user_id:
-            target_uid = message.contact.user_id
-            user_name = message.contact.first_name
+    # 4. Check if a contact card is shared directly
+    elif message.contact and message.contact.user_id:
+        target_uid = message.contact.user_id
+        user_name = message.contact.first_name
             
-    # Fallback for plain user ID or text input
-    if not target_uid and message.text and not message.text.startswith("/"):
+    # 5. Fallback for plain user ID or text input
+    elif message.text and not message.text.startswith("/"):
         text = message.text.strip()
         if text.isdigit():
             target_uid = int(text)
         user_name = text
 
     if not target_uid:
-        await message.reply_text("⚠️ Please share a valid profile mention.")
+        await message.reply_text("⚠️ Please share a valid profile using the buttons.")
         return
         
-    logger.info(f"Extracted User ID: {target_uid}, Name: {user_name}")
+    logger.info(f"Extracted Target ID: {target_uid}, Name: {user_name}")
     await message.reply_text("⏳ Processing contact through session account...")
     
     try:
-        # Create and send a native Telegram Contact card via userbot session
+        # Send native Telegram Contact card via userbot session to target bot
         contact = InputMediaContact(
             phone_number="",
             first_name=user_name,
@@ -150,6 +161,7 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
 
 
