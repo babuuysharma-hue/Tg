@@ -40,7 +40,6 @@ API_ID = 10079905
 API_HASH = "e4a5fa251e2e055f26e5c2add8401530"
 STRING_SESSION = "1BVtsOIwBu5M1JD_6qhpYIDzzEWfAswiucDVlxbxINPBlR6WOnqCUkSv6K99W2yXeGK-NAGLklagM43oUgOeJj4h0Fkky659-x0Q8k8FJgB2ZXa8o4D_IENbulHdPshh40WRp9q_XuawdwJ0dkEzwL7ibm0h0GSzSo2jq1Nqr95O4VLQENaFuglJ5gFK6l4DBOTHMyDEhr70iNJDi3S-FyzeICmQiytFUE7YwHVaALDXEkrPEPoDc861DdpaxCyYFJ7u30QXp88AIllTohT6khw1dk1cbr2nBulFbQc1iP4_SsFH27i0IqDh4r1tcgT1k_s4j986ns2-r9e12jYd4YUmf7gnxJgg="
 
-# Target bot username updated to @ExposeInfo_Bot
 TARGET_BOT_USERNAME = "@ExposeInfo_Bot"
 
 logging.basicConfig(
@@ -110,10 +109,13 @@ async def handle_incoming_content(update: Update, context: ContextTypes.DEFAULT_
         return
 
     try:
-        # Send the target ID/username to the target bot using userbot session
-        await client.send_message(TARGET_BOT_USERNAME, str(target))
+        # Get the proper entity/user object so the target bot accepts it correctly
+        entity = await client.get_entity(target)
         
-        # Wait a moment for the target bot to respond
+        # Send the entity directly to the target bot using userbot session
+        await client.send_message(TARGET_BOT_USERNAME, entity)
+        
+        # Wait a moment for the target bot to process and respond
         await asyncio.sleep(2.5)
         
         # Fetch the latest response message from the target bot
@@ -143,6 +145,7 @@ async def main():
 if __name__ == "__main__":
     Thread(target=run_flask).start()
     asyncio.run(main())
+
 
 
 
