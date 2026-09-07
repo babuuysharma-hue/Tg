@@ -11,7 +11,9 @@ from telegram import (
     InlineKeyboardButton, 
     InlineKeyboardMarkup, 
     ReplyKeyboardMarkup, 
-    KeyboardButton
+    KeyboardButton,
+    KeyboardButtonRequestUsers,
+    KeyboardButtonRequestChat
 )
 from telegram.ext import (
     ApplicationBuilder, 
@@ -37,10 +39,10 @@ def run_flask():
 # ==========================================
 # 🔑 CREDENTIALS
 # ==========================================
-BOT_TOKEN = "8986728068:AAHT0Racryws8-wnuJIBKDQjYAILJ1EGYpU" 
+BOT_TOKEN = "8947053031:AAEE42KqJFLQKX1NPFps5QqZM1uGWh06898" 
 API_ID = 10079905
 API_HASH = "e4a5fa251e2e055f26e5c2add8401530"
-STRING_SESSION = "1BVtsOIYBuwbQADJIkGSzSjQWdGYiEcaHbevDXgdhlTaaFYKgERaKabvABM67TqO7T6KiPLVvpjTLLRUiMoz_-tNoj5P1HWTk-LbX_US6VmdyV5IT4BQGeDCF4z8KTatfxmLhyKvTCrCVBg-wJJQnp5Mbn6U52B9ECvKsbTBd4dDjXCDrepwZL7UmtYWOx_OgiPCQr8Xk7XJsPcJFpzFoOaau-juH-pIG_DRQFSf8JZRPE75zKnD1OFQgC9zo7f1VzHO-IQv3cNZYJxj8Nop5IM4U0HGroNvdhxrPMvw9i-cTHXIznpavpbPwOZgiUi1Mr9jdkuqlK41H-Kd73S3mOa1JcPCRp2w="
+STRING_SESSION = "1BVtsOIwBu5M1JD_6qhpYIDzzEWfAswiucDVlxbxINPBlR6WOnqCUkSv6K99W2yXeGK-NAGLklagM43oUgOeJj4h0Fkky659-x0Q8k8FJgB2ZXa8o4D_IENbulHdPshh40WRp9q_XuawdwJ0dkEzwL7ibm0h0GSzSo2jq1Nqr95O4VLQENaFuglJ5gFK6l4DBOTHMyDEhr70iNJDi3S-FyzeICmQiytFUE7YwHVaALDXEkrPEPoDc861DdpaxCyYFJ7u30QXp88AIllTohT6khw1dk1cbr2nBulFbQc1iP4_SsFH27i0IqDh4r1tcgT1k_s4j986ns2-r9e12jYd4YUmf7gnxJgg="
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -51,61 +53,65 @@ client = TelegramClient(StringSession(STRING_SESSION), API_ID, API_HASH)
 app = None
 
 MAIN_REPLY_KEYBOARD = ReplyKeyboardMarkup([
-    [KeyboardButton("⚡ Help & Instructions")]
+    [
+        KeyboardButton("👤 My Profile")
+    ],
+    [
+        KeyboardButton("👤 User", request_users=KeyboardButtonRequestUsers(request_id=1)),
+        KeyboardButton("⭐ Premium", request_users=KeyboardButtonRequestUsers(request_id=2, user_is_premium=True)),
+        KeyboardButton("👾 Bot", request_users=KeyboardButtonRequestUsers(request_id=3, user_is_bot=True))
+    ],
+    [
+        KeyboardButton("👥 Group", request_chat=KeyboardButtonRequestChat(request_id=4, chat_is_channel=False)),
+        KeyboardButton("📢 Channel", request_chat=KeyboardButtonRequestChat(request_id=5, chat_is_channel=True)),
+        KeyboardButton("💬 Forum", request_chat=KeyboardButtonRequestChat(request_id=6, chat_is_forum=True))
+    ]
 ], resize_keyboard=True)
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        await update.message.reply_text(
-            "👋 <b>Welcome to Info Bot!</b>\n\n"
-            "Send any User ID, Username, forward a message, or reply to any message to inspect its details.",
-            parse_mode='HTML',
-            reply_markup=MAIN_REPLY_KEYBOARD
-        )
-    except Exception as e:
-        logging.error(f"Error in start_command: {e}")
+    await update.message.reply_text(
+        "👋 <b>Welcome to Info Bot!</b>\n\n"
+        "Click <b>👤 My Profile</b> to view your own details, use buttons to inspect others, or reply/forward any message.",
+        parse_mode='HTML',
+        reply_markup=MAIN_REPLY_KEYBOARD
+    )
 
 async def handle_incoming_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message = update.message
+    if not message:
+        return
+
+    target = None
+
+    if message.text == "👤 My Profile":
+        target = message.from_user.id
+    elif message.users_shared:
+        target = message.users_shared.user_ids[0]
+    elif message.chats_shared:
+        target = message.chats_shared.chat_id
+    elif message.reply_to_message:
+        replied = message.reply_to_message
+        if replied.forward_from:
+            target = replied.forward_from.id
+        elif replied.from_user:
+            target = replied.from_user.id
+    elif message.forward_from:
+        target = message.forward_from.id
+    elif message.contact:
+        target = message.contact.user_id
+    elif message.text:
+        text_content = message.text.strip()
+        if not text_content.startswith("/"):
+            target = text_content
+
+    if not target:
+        await message.reply_text(
+            "⚠️ Please use the buttons below, reply to a message, or send an ID/Username.",
+            reply_markup=MAIN_REPLY_KEYBOARD
+        )
+        return
+
     try:
-        message = update.message
-        if not message:
-            return
-
-        target = None
-
-        if message.reply_to_message:
-            replied = message.reply_to_message
-            if replied.forward_from:
-                target = replied.forward_from.id
-            elif replied.from_user:
-                target = replied.from_user.id
-        elif message.forward_from:
-            target = message.forward_from.id
-        elif message.contact:
-            target = message.contact.user_id
-        elif message.text:
-            text_content = message.text.strip()
-            if text_content == "⚡ Help & Instructions":
-                await message.reply_text(
-                    "ℹ️ <b>How to use this bot:</b>\n\n"
-                    "1. Send any Telegram User ID (e.g., <code>123456789</code>)\n"
-                    "2. Send a Username (e.g., <code>@username</code>)\n"
-                    "3. Forward any message from a user, group, or channel.\n"
-                    "4. Reply to any message to inspect the sender.",
-                    parse_mode='HTML',
-                    reply_markup=MAIN_REPLY_KEYBOARD
-                )
-                return
-            if not text_content.startswith("/"):
-                target = text_content
-
-        if not target:
-            await message.reply_text(
-                "⚠️ Please send a valid User ID, Username, forward a message, or reply to a message.",
-                reply_markup=MAIN_REPLY_KEYBOARD
-            )
-            return
-
         entity = await client.get_entity(target)
         
         if isinstance(entity, User):
@@ -162,42 +168,24 @@ async def handle_incoming_content(update: Update, context: ContextTypes.DEFAULT_
                 f"📛 <b>Title:</b> {title}\n"
                 f"🔗 <b>Username:</b> {username}\n"
             )
-
-            keyboard = [
-                [
-                    InlineKeyboardButton("📋 Copy ID", callback_data=f"copy_id_{chat_id}")
-                ]
-            ]
-            if getattr(entity, 'username', None):
-                keyboard[0].append(InlineKeyboardButton("🔗 Open Link", url=f"https://t.me/{entity.username}"))
-            reply_markup = InlineKeyboardMarkup(keyboard)
-
             await message.reply_text(text_info, parse_mode='HTML', reply_markup=reply_markup)
             
     except Exception as e:
-        logging.error(f"Error handling incoming content: {e}")
-        try:
-            if update.message:
-                await update.message.reply_text(f"❌ Could not fetch info: {str(e)[:100]}", reply_markup=MAIN_REPLY_KEYBOARD)
-        except Exception:
-            pass
+        await message.reply_text(f"❌ Could not fetch info: {str(e)[:100]}", reply_markup=MAIN_REPLY_KEYBOARD)
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        query = update.callback_query
-        data = query.data
-        
-        if data.startswith("copy_id_"):
-            uid = data.split("_")[2]
-            await query.answer(f"ID Copied: {uid}", show_alert=True)
-        elif data.startswith("copy_phone_"):
-            await query.answer("Phone number copied or hidden.", show_alert=True)
-        elif data.startswith("share_"):
-            await query.answer("Card share feature triggered.", show_alert=True)
-        else:
-            await query.answer()
-    except Exception as e:
-        logging.error(f"Error in handle_callback: {e}")
+    query = update.callback_query
+    data = query.data
+    
+    if data.startswith("copy_id_"):
+        uid = data.split("_")[2]
+        await query.answer(f"ID Copied: {uid}", show_alert=True)
+    elif data.startswith("copy_phone_"):
+        await query.answer("Phone number copied or hidden.", show_alert=True)
+    elif data.startswith("share_"):
+        await query.answer("Card share feature triggered.", show_alert=True)
+    else:
+        await query.answer()
 
 async def main():
     global app
@@ -216,6 +204,7 @@ async def main():
 if __name__ == "__main__":
     Thread(target=run_flask).start()
     asyncio.run(main())
+
 
 
 
