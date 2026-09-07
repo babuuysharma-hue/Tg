@@ -33,22 +33,21 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+logger = logging.getLogger(__name__)
 
-# Initialize userbot client
+# Initialize userbot
 userbot = TelegramClient(StringSession(STRING_SESSION), API_ID, API_HASH)
 bot_app = None
 
-# Store user message IDs to reply later
-user_messages = {}
+# Store user message to reply later
+user_message_cache = {}
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👋 <b>Welcome to Info Bot!</b>\n\n"
         "📌 <b>How to use:</b>\n"
         "1️⃣ Share any user's profile to this bot\n"
-        "2️⃣ Send username (e.g., @username)\n"
-        "3️⃣ Send user ID\n"
-        "4️⃣ Forward any message\n\n"
+        "2️⃣ Forward any user's message\n\n"
         "⚡ I'll fetch info from target bot and send back!",
         parse_mode='HTML'
     )
@@ -60,148 +59,207 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not message:
         return
     
-    # Save user's message ID to reply later
-    user_messages[user_id] = message.message_id
+    logger.info(f"===== NEW MESSAGE from {user_id} =====")
+    logger.info(f"Message text: {message.text}")
+    logger.info(f"Has forward_from: {message.forward_from}")
     
-    # CASE 1: Forwarded user profile
+    # Store user message for response
+    user_message_cache[user_id] = message
+    
+    # ==========================================
+    # CASE 1: USER SHARED PROFILE (Forward)
+    # ==========================================
     if message.forward_from:
         try:
             forwarded_user = message.forward_from
-            user_info = None
+            logger.info(f"✅ Forwarded user: {forwarded_user.first_name} (ID: {forwarded_user.id})")
             
-            # Try to get username first
-            if forwarded_user.username:
-                user_info = f"@{forwarded_user.username}"
-            else:
-                # If no username, use ID
-                user_info = str(forwarded_user.id)
+            # Send acknowledgement to user
+            await message.reply_text("⏳ Processing... Forwarding to target bot...")
             
-            logging.info(f"Forwarded user: {user_info}")
+            # Get target bot entity
+            target_bot = await userbot.get_entity(TARGET_BOT_USERNAME)
+            logger.info(f"✅ Target bot entity: {target_bot.id}")
             
-            # Send to target bot using userbot
-            await userbot.send_message(TARGET_BOT_USERNAME, user_info)
+            # 🔥 CRITICAL: Forward the message to target bot using userbot
+            await userbot.forward_messages(
+                entity=target_bot,
+                messages=message.id,
+                from_peer=message.chat_id
+            )
+            logger.info("✅ Message forwarded to target bot")
             
-            # Wait for response
-            await asyncio.sleep(3)
+            # Wait for target bot response
+            await asyncio.sleep(4)
             
-            # Get target bot's latest response
-            async for msg in userbot.iter_messages(TARGET_BOT_USERNAME, limit=1):
-                if msg and msg.text and not msg.text.startswith("/"):
-                    # Send response back to user
+            # Get target bot's response
+            async for response in userbot.iter_messages(TARGET_BOT_USERNAME, limit=1):
+                if response and response.text:
+                    logger.info(f"✅ Target bot response: {response.text[:100]}...")
                     await message.reply_text(
-                        f"📊 <b>User Info:</b>\n\n{msg.text}",
+                        f"📊 <b>User Info:</b>\n\n{response.text}",
                         parse_mode='HTML'
                     )
                     return
             
+            # If no response
             await message.reply_text("⚠️ Target bot did not respond. Try again.")
             return
             
         except Exception as e:
-            logging.error(f"Error in forward_from: {e}")
+            logger.error(f"❌ Error in forward: {e}")
             await message.reply_text(f"❌ Error: {str(e)[:100]}")
             return
     
-    # CASE 2: Text message with username or link
+    # ==========================================
+    # CASE 2: USER SENT TEXT (username/name)
+    # ==========================================
     if message.text and not message.text.startswith("/"):
         text = message.text.strip()
+        logger.info(f"📝 Processing text: {text}")
         
-        # Check if it's a username or Telegram link
-        if text.startswith("@") or "t.me/" in text or text.isdigit():
-            try:
-                await userbot.send_message(TARGET_BOT_USERNAME, text)
+        # Try to find user
+        try:
+            found_user = None
+            
+            # Search by username
+            if text.startswith("@"):
+                username = text.replace("@", "")
+                try:
+                    found_user = await userbot.get_entity(text)
+                    logger.info(f"✅ Found by username: {found_user.first_name}")
+                except:
+                    pass
+            
+            # If not found, search by name
+            if not found_user:
+                async for user in userbot.iter_participants(limit=100):
+                    if user.first_name and text.lower() in user.first_name.lower():
+                        found_user = user
+                        logger.info(f"✅ Found by first name: {user.first_name}")
+                        break
+                    elif user.last_name and text.lower() in user.last_name.lower():
+                        found_user = user
+                        logger.info(f"✅ Found by last name: {user.last_name}")
+                        break
+            
+            if found_user:
+                await message.reply_text(f"⏳ Found user: {found_user.first_name}. Fetching info...")
+                
+                # Send to target bot
+                target_bot = await userbot.get_entity(TARGET_BOT_USERNAME)
+                
+                # Send user info to target bot
+                await userbot.send_message(
+                    target_bot,
+                    f"User: {found_user.first_name} {found_user.last_name or ''}\nID: {found_user.id}"
+                )
+                logger.info(f"✅ Sent user info to target bot: {found_user.id}")
+                
                 await asyncio.sleep(3)
                 
-                async for msg in userbot.iter_messages(TARGET_BOT_USERNAME, limit=1):
-                    if msg and msg.text and not msg.text.startswith("/"):
+                # Get response
+                async for response in userbot.iter_messages(TARGET_BOT_USERNAME, limit=1):
+                    if response and response.text:
                         await message.reply_text(
-                            f"📊 <b>Info for {text}:</b>\n\n{msg.text}",
+                            f"📊 <b>Info for {found_user.first_name}:</b>\n\n{response.text}",
                             parse_mode='HTML'
                         )
                         return
+            else:
+                await message.reply_text("⚠️ User not found. Please share their profile directly.")
                 
-                await message.reply_text("⚠️ Target bot did not respond.")
-                return
-                
-            except Exception as e:
-                logging.error(f"Error in text message: {e}")
-                await message.reply_text(f"❌ Error: {str(e)[:100]}")
-                return
-        
-        # CASE 3: Plain text - forward as-is
-        try:
-            await userbot.send_message(TARGET_BOT_USERNAME, text)
-            await asyncio.sleep(3)
-            
-            async for msg in userbot.iter_messages(TARGET_BOT_USERNAME, limit=1):
-                if msg and msg.text and not msg.text.startswith("/"):
-                    await message.reply_text(msg.text)
-                    return
-            
-            await message.reply_text("⚠️ Target bot did not respond.")
-            
         except Exception as e:
-            logging.error(f"Error in plain text: {e}")
+            logger.error(f"❌ Error in text processing: {e}")
             await message.reply_text(f"❌ Error: {str(e)[:100]}")
         return
     
-    # CASE 4: Any other message (like media, etc.)
+    # ==========================================
+    # CASE 3: FORWARD FROM CHAT/GROUP
+    # ==========================================
     if message.forward_from_chat:
-        await message.reply_text("⚠️ Please share individual user profiles or send username/ID.")
+        try:
+            logger.info("✅ Forwarded from chat")
+            await message.reply_text("⏳ Processing forwarded message...")
+            
+            target_bot = await userbot.get_entity(TARGET_BOT_USERNAME)
+            await userbot.forward_messages(
+                entity=target_bot,
+                messages=message.id,
+                from_peer=message.chat_id
+            )
+            logger.info("✅ Forwarded to target bot")
+            
+            await asyncio.sleep(3)
+            
+            async for response in userbot.iter_messages(TARGET_BOT_USERNAME, limit=1):
+                if response and response.text:
+                    await message.reply_text(
+                        f"📊 <b>Info:</b>\n\n{response.text}",
+                        parse_mode='HTML'
+                    )
+                    return
+                    
+        except Exception as e:
+            logger.error(f"❌ Error in chat forward: {e}")
+            await message.reply_text(f"❌ Error: {str(e)[:100]}")
+        return
 
 # ==========================================
-# 🔄 Background listener for target bot responses
+# 🔥 LISTEN TO TARGET BOT RESPONSES
 # ==========================================
 @userbot.on(events.NewMessage(chats=TARGET_BOT_USERNAME))
-async def target_bot_response_handler(event):
-    """Listen to target bot responses and forward to user"""
+async def target_bot_listener(event):
+    """Listen to target bot and forward response to user"""
     try:
-        if not event.message.text or event.message.text.startswith("/"):
+        if not event.message.text:
             return
+            
+        logger.info(f"🎯 TARGET BOT RESPONSE: {event.message.text[:100]}...")
         
-        # Get the last user who requested
-        if user_messages:
-            last_user_id = list(user_messages.keys())[-1]
-            msg_id = user_messages[last_user_id]
+        # Find the user who requested
+        if user_message_cache:
+            # Get the last user who sent message
+            last_user_id = list(user_message_cache.keys())[-1]
+            user_message = user_message_cache[last_user_id]
             
             # Send response to user via official bot
             await bot_app.bot.send_message(
                 chat_id=last_user_id,
-                text=f"📊 <b>Response from target bot:</b>\n\n{event.message.text}",
+                text=f"📊 <b>Target Bot Response:</b>\n\n{event.message.text}",
                 parse_mode='HTML',
-                reply_to_message_id=msg_id
+                reply_to_message_id=user_message.message_id
             )
+            logger.info(f"✅ Response sent to user {last_user_id}")
             
-            # Clear after sending
-            user_messages.pop(last_user_id, None)
+            # Remove from cache after sending
+            user_message_cache.pop(last_user_id, None)
             
     except Exception as e:
-        logging.error(f"Error in response handler: {e}")
+        logger.error(f"❌ Listener error: {e}")
 
 async def main():
     global bot_app
     
-    # Start userbot
+    logger.info("🚀 Starting userbot...")
     await userbot.start()
-    logging.info("✅ Userbot started!")
+    logger.info("✅ Userbot started!")
     
     # Start Flask
     Thread(target=run_flask).start()
+    logger.info("✅ Flask started!")
     
     # Setup official bot
     bot_app = ApplicationBuilder().token(BOT_TOKEN).build()
     bot_app.add_handler(CommandHandler("start", start_command))
-    bot_app.add_handler(MessageHandler(
-        filters.TEXT | filters.FORWARDED, 
-        handle_message
-    ))
+    bot_app.add_handler(MessageHandler(filters.ALL, handle_message))
     
-    # Start bot
+    logger.info("🚀 Starting bot...")
     await bot_app.initialize()
     await bot_app.start()
     await bot_app.updater.start_polling(drop_pending_updates=True)
     
-    logging.info("✅ Bot is running!")
+    logger.info("✅ Bot is running! Waiting for messages...")
     
     # Keep running
     while True:
