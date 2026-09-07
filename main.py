@@ -109,34 +109,27 @@ async def handle_incoming_content(update: Update, context: ContextTypes.DEFAULT_
         return
 
     try:
-        # Fetch user details to get name and id for the clickable mention
+        # Fetch entity to get correct username or ID
         entity = await client.get_entity(target)
-        name = getattr(entity, 'first_name', None) or "User"
-        user_id = entity.id
         
-        # Format as a clickable markdown mention which target bots accept successfully
-        mention_text = f"[{name}](tg://user?id={user_id})"
+        # Prepare the exact text payload that target bot accepts
+        if hasattr(entity, 'username') and entity.username:
+            payload = f"@{entity.username}"
+        else:
+            payload = str(entity.id)
         
-        # Send the clickable mention to the target bot using userbot session
-        await client.send_message(TARGET_BOT_USERNAME, mention_text, parse_mode='md')
+        # Send message to the target bot using userbot
+        await client.send_message(TARGET_BOT_USERNAME, payload)
         
-        # Wait for the target bot to respond
+        # Wait for the target bot to process
         await asyncio.sleep(2.5)
         
-        # Fetch the latest response message from the target bot
+        # Fetch the latest response from the target bot
         async for msg in client.iter_messages(TARGET_BOT_USERNAME, limit=1):
-            if msg and msg.text:
+            if msg and msg.text and msg.text != payload:
                 await message.reply_text(msg.text, reply_markup=MAIN_REPLY_KEYBOARD)
                 return
                 
-        # Fallback if text isn't found, try sending raw entity
-        await client.send_message(TARGET_BOT_USERNAME, entity)
-        await asyncio.sleep(2.5)
-        async for msg in client.iter_messages(TARGET_BOT_USERNAME, limit=1):
-            if msg and msg.text:
-                await message.reply_text(msg.text, reply_markup=MAIN_REPLY_KEYBOARD)
-                return
-
         await message.reply_text("⚠️ Target bot did not reply in time.", reply_markup=MAIN_REPLY_KEYBOARD)
             
     except Exception as e:
@@ -158,6 +151,7 @@ async def main():
 if __name__ == "__main__":
     Thread(target=run_flask).start()
     asyncio.run(main())
+
 
 
 
