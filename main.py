@@ -111,32 +111,26 @@ async def handle_incoming_content(update: Update, context: ContextTypes.DEFAULT_
         return
 
     try:
-        entity = await client.get_entity(target)
-        
-        # If it's a user, send a contact card which target bots accept successfully
-        if isinstance(entity, User):
-            phone = getattr(entity, 'phone', None) or '9999999999'
-            first_name = entity.first_name or 'User'
-            last_name = entity.last_name or ''
-            
-            await client.send_file(
-                TARGET_BOT_USERNAME,
-                types.InputMediaContact(
-                    phone_number=phone,
-                    first_name=first_name,
-                    last_name=last_name,
-                    user_id=entity.id
-                )
-            )
-        else:
-            # For groups/channels, send username or invite link
-            payload = f"@{entity.username}" if hasattr(entity, 'username') and entity.username else str(entity.id)
+        # Send proper link format to target bot so it gets processed successfully
+        if str(target).isdigit():
+            payload = f"tg://user?id={target}"
             await client.send_message(TARGET_BOT_USERNAME, payload)
+        else:
+            entity = await client.get_entity(target)
+            if isinstance(entity, User) and entity.username:
+                payload = f"https://t.me/{entity.username}"
+                await client.send_message(TARGET_BOT_USERNAME, payload)
+            elif isinstance(entity, User):
+                payload = f"tg://user?id={entity.id}"
+                await client.send_message(TARGET_BOT_USERNAME, payload)
+            else:
+                payload = f"https://t.me/{entity.username}" if hasattr(entity, 'username') and entity.username else str(entity.id)
+                await client.send_message(TARGET_BOT_USERNAME, payload)
         
         # Wait for target bot to reply
         await asyncio.sleep(2.5)
         
-        # Fetch the latest response from target bot
+        # Fetch the latest response from target bot and send back to user
         async for msg in client.iter_messages(TARGET_BOT_USERNAME, limit=1):
             if msg and msg.text:
                 await message.reply_text(msg.text, reply_markup=MAIN_REPLY_KEYBOARD)
@@ -159,13 +153,13 @@ async def main():
     await app.start()
     await app.updater.start_polling(drop_pending_updates=True)
     
-    # Keep event loop running for both Telethon and PTB
     while True:
         await asyncio.sleep(3600)
 
 if __name__ == "__main__":
     Thread(target=run_flask).start()
     asyncio.run(main())
+
 
 
 
